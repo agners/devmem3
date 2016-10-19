@@ -49,26 +49,59 @@
 #define dprintf(fmt, ...)
 #endif
 
+void print_usage(const char* name)
+{
+	fprintf(stderr, "\nUsage:\t%s r { address } [ type [ count ] ]\n"
+			"\t%s w { address } { type } { data } [ count ]\n"
+			"\taddress : memory address to act upon\n"
+			"\ttype    : access operation type : [b]yte, [h]alfword, [l]ong (default)\n"
+			"\tdata    : data to be written\n\n"
+			"\tcount   : count of accesses\n\n",
+			name, name);
+}
+
 int main(int argc, char **argv) {
 	int fd;
 	void *map_base, *virt_addr; 
 	unsigned long read_result, writeval;
 	off_t target;
-	int access_type = 'w';
+	int access_type = 'l';
+	int access_length;
+	int iswrite = 0;
+	int count = 1;
 	
-	if (argc < 2) {
-		fprintf(stderr, "\nUsage:\t%s { address } [ type [ data ] ]\n"
-			"\taddress : memory address to act upon\n"
-			"\ttype    : access operation type : [b]yte, [h]alfword, [w]ord\n"
-			"\tdata    : data to be written\n\n",
-			argv[0]);
+	if (argc < 3) {
+		print_usage(argv[0]);
 		exit(1);
 	}
-	target = strtoul(argv[1], 0, 0);
+
+	if (argv[1][0] == 'r') {
+		iswrite = 0;
+	} else if (argv[1][0] == 'w') {
+		iswrite = 1;
+	} else {
+		print_usage(argv[0]);
+		exit(1);
+	}
+
+	target = strtoul(argv[2], 0, 16);
 
 	if(argc > 2)
-		access_type = tolower(argv[2][0]);
-
+		access_type = tolower(argv[3][0]);
+	switch (access_type) {
+	case 'b':
+		access_length = 1;
+		break;
+	case 'h':
+		access_length = 2;
+		break;
+	case 'l':
+		access_length = 4;
+		break;
+	default:
+		fprintf(stderr, "Illegal data type '%c'.\n", access_type);
+		exit(2);
+	}
 
 	if ((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1)
 		exit_error();
@@ -81,26 +114,37 @@ int main(int argc, char **argv) {
 	dprintf("Memory mapped at address %p.\n", map_base); 
 
 	virt_addr = map_base + (target & MAP_MASK);
-	switch(access_type) {
-	case 'b':
-		read_result = *((unsigned char *) virt_addr);
-		break;
-	case 'h':
-		read_result = *((unsigned short *) virt_addr);
-		break;
-	case 'w':
-		read_result = *((unsigned long *) virt_addr);
-		break;
-	default:
-		fprintf(stderr, "Illegal data type '%c'.\n", access_type);
-		exit(2);
+
+	if (argc > 4)
+		count = strtoul(argv[4], 0, 0); 
+
+	for (int i = 0; i < count; i++) {
+		if (!((i * access_length) % 16))
+			printf("\n%08x:", target);
+
+		switch (access_length) {
+		case 1:
+			read_result = *((unsigned char *) virt_addr);
+			printf(" %02x", read_result); 
+			break;
+		case 2:
+			read_result = *((unsigned short *) virt_addr);
+			printf(" %04x", read_result); 
+			break;
+		case 4:
+			read_result = *((unsigned long *) virt_addr);
+			printf(" %08x", read_result); 
+			break;
+		}
+		virt_addr += access_length;
+		target += access_length;
 	}
 
-	printf("0x%08x: 0x%08x\n", target, read_result); 
+	printf("\n\n");
 	fflush(stdout);
 
-	if(argc > 3) {
-		writeval = strtoul(argv[3], 0, 0);
+	if(iswrite) {
+		writeval = strtoul(argv[4], 0, 16);
 		switch(access_type) {
 			case 'b':
 				*((unsigned char *) virt_addr) = writeval;
