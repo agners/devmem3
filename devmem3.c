@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
 
 	target = strtoul(argv[2], 0, 16);
 
-	if(argc > 2)
+	if(argc > 3)
 		access_type = tolower(argv[3][0]);
 	switch (access_type) {
 	case 'b':
